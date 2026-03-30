@@ -26,3 +26,58 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 // TODO: Add your tables here
+/**
+ * CMS Pages table for managing content pages
+ */
+export const pages = mysqlTable("pages", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  content: text("content"),
+  description: text("description"),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  authorId: int("authorId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  publishedAt: timestamp("publishedAt"),
+});
+
+export type Page = typeof pages.$inferSelect;
+export type InsertPage = typeof pages.$inferInsert;
+
+/**
+ * CMS Articles table for managing blog posts and articles
+ */
+export const articles = mysqlTable("articles", {
+  id: int("id").autoincrement().primaryKey(),
+  title: varchar("title", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  content: text("content"),
+  excerpt: text("excerpt"),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  authorId: int("authorId").notNull().references(() => users.id),
+  category: varchar("category", { length: 100 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  publishedAt: timestamp("publishedAt"),
+});
+
+export type Article = typeof articles.$inferSelect;
+export type InsertArticle = typeof articles.$inferInsert;
+
+/**
+ * CMS Media table for managing uploaded files and images
+ */
+export const media = mysqlTable("media", {
+  id: int("id").autoincrement().primaryKey(),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  url: text("url").notNull(),
+  fileKey: varchar("fileKey", { length: 255 }).notNull(),
+  mimeType: varchar("mimeType", { length: 100 }),
+  size: int("size"),
+  uploadedBy: int("uploadedBy").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Media = typeof media.$inferSelect;
+export type InsertMedia = typeof media.$inferInsert;

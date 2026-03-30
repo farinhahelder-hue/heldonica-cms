@@ -1,6 +1,6 @@
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, users, pages, articles, media, InsertPage, InsertArticle, InsertMedia } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,85 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+// CMS Pages queries
+export async function getPages(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pages).orderBy(desc(pages.createdAt)).limit(limit);
+}
+
+export async function getPageBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(pages).where(eq(pages.slug, slug)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createPage(data: InsertPage) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(pages).values(data);
+}
+
+export async function updatePage(id: number, data: Partial<InsertPage>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(pages).set(data).where(eq(pages.id, id));
+}
+
+export async function deletePage(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(pages).where(eq(pages.id, id));
+}
+
+// CMS Articles queries
+export async function getArticles(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(articles).orderBy(desc(articles.createdAt)).limit(limit);
+}
+
+export async function getArticleBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(articles).where(eq(articles.slug, slug)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createArticle(data: InsertArticle) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(articles).values(data);
+}
+
+export async function updateArticle(id: number, data: Partial<InsertArticle>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(articles).set(data).where(eq(articles.id, id));
+}
+
+export async function deleteArticle(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(articles).where(eq(articles.id, id));
+}
+
+// CMS Media queries
+export async function getMedia(limit = 20) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(media).orderBy(desc(media.createdAt)).limit(limit);
+}
+
+export async function createMedia(data: InsertMedia) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(media).values(data);
+}
+
+export async function deleteMedia(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(media).where(eq(media.id, id));
+}
