@@ -1,4 +1,4 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, pages, articles, media, InsertPage, InsertArticle, InsertMedia } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -126,6 +126,44 @@ export async function getArticles(limit = 10) {
   const db = await getDb();
   if (!db) return [];
   return db.select().from(articles).orderBy(desc(articles.createdAt)).limit(limit);
+}
+
+// Public queries - only return published content
+export async function getPublishedArticles(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(articles)
+    .where(eq(articles.status, 'published'))
+    .orderBy(desc(articles.publishedAt))
+    .limit(limit);
+}
+
+export async function getPublishedArticleBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(articles)
+    .where(and(eq(articles.slug, slug), eq(articles.status, 'published')))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+// Public pages - only return published
+export async function getPublishedPages(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(pages)
+    .where(eq(pages.status, 'published'))
+    .orderBy(desc(pages.publishedAt))
+    .limit(limit);
+}
+
+export async function getPublishedPageBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(pages)
+    .where(and(eq(pages.slug, slug), eq(pages.status, 'published')))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
 }
 
 export async function getArticleBySlug(slug: string) {

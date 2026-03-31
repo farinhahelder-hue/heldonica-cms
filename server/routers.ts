@@ -33,9 +33,19 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getPages(input?.limit)),
 
+    // Public list - only published pages
+    listPublished: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }).optional())
+      .query(({ input }) => db.getPublishedPages(input?.limit)),
+
     getBySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getPageBySlug(input.slug)),
+
+    // Public get by slug - only published
+    getPublishedBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(({ input }) => db.getPublishedPageBySlug(input.slug)),
 
     create: adminProcedure
       .input(z.object({
@@ -78,9 +88,19 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getArticles(input?.limit)),
 
+    // Public list - only published articles
+    listPublished: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }).optional())
+      .query(({ input }) => db.getPublishedArticles(input?.limit)),
+
     getBySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getArticleBySlug(input.slug)),
+
+    // Public get by slug - only published
+    getPublishedBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(({ input }) => db.getPublishedArticleBySlug(input.slug)),
 
     create: adminProcedure
       .input(z.object({
