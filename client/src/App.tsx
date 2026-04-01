@@ -7,6 +7,8 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import PagesManager from "./pages/PagesManager";
+import Destinations from "./pages/Destinations";
+import Footer from "./components/Footer";
 
 function Router() {
   return (
@@ -14,6 +16,7 @@ function Router() {
       <Route path={"/"} component={Home} />
       <Route path={"/dashboard"} component={Dashboard} />
       <Route path={"/pages"} component={PagesManager} />
+      <Route path={"/destinations"} component={Destinations} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
       <Route component={NotFound} />
@@ -29,7 +32,12 @@ function App() {
       >
         <TooltipProvider>
           <Toaster />
-          <Router />
+          <div className="flex flex-col min-h-screen">
+            <main className="flex-1">
+              <Router />
+            </main>
+            <Footer />
+          </div>
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

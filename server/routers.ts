@@ -53,6 +53,9 @@ export const appRouter = router({
         slug: z.string().min(1),
         content: z.string().optional(),
         description: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
       }))
       .mutation(({ ctx, input }) =>
         db.createPage({
@@ -69,6 +72,9 @@ export const appRouter = router({
         slug: z.string().optional(),
         content: z.string().optional(),
         description: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
         status: z.enum(['draft', 'published', 'archived']).optional(),
         publishedAt: z.date().optional(),
       }))
@@ -109,14 +115,19 @@ export const appRouter = router({
         content: z.string().optional(),
         excerpt: z.string().optional(),
         category: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
       }))
-      .mutation(({ ctx, input }) =>
-        db.createArticle({
+      .mutation(({ ctx, input }) => {
+        const readTime = db.calculateReadTime(input.content);
+        return db.createArticle({
           ...input,
+          readTime,
           authorId: ctx.user.id,
           status: 'draft',
-        })
-      ),
+        });
+      }),
 
     update: adminProcedure
       .input(z.object({
@@ -126,12 +137,20 @@ export const appRouter = router({
         content: z.string().optional(),
         excerpt: z.string().optional(),
         category: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
         status: z.enum(['draft', 'published', 'archived']).optional(),
         publishedAt: z.date().optional(),
       }))
       .mutation(({ input }) => {
-        const { id, ...data } = input;
-        return db.updateArticle(id, data);
+        const { id, content, ...data } = input;
+        const updateData = { ...data };
+        if (content) {
+          updateData.content = content;
+          updateData.readTime = db.calculateReadTime(content);
+        }
+        return db.updateArticle(id, updateData);
       }),
 
     delete: adminProcedure
@@ -163,6 +182,73 @@ export const appRouter = router({
     delete: adminProcedure
       .input(z.object({ id: z.number() }))
       .mutation(({ input }) => db.deleteMedia(input.id)),
+  }),
+
+  // CMS Destinations router
+  destinations: router({
+    list: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }).optional())
+      .query(({ input }) => db.getDestinations(input?.limit)),
+
+    // Public list - only published destinations
+    listPublished: publicProcedure
+      .input(z.object({ limit: z.number().default(10) }).optional())
+      .query(({ input }) => db.getPublishedDestinations(input?.limit)),
+
+    getBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(({ input }) => db.getDestinationBySlug(input.slug)),
+
+    // Public get by slug - only published
+    getPublishedBySlug: publicProcedure
+      .input(z.object({ slug: z.string() }))
+      .query(({ input }) => db.getPublishedDestinationBySlug(input.slug)),
+
+    create: adminProcedure
+      .input(z.object({
+        name: z.string().min(1),
+        slug: z.string().min(1),
+        description: z.string().optional(),
+        country: z.string().optional(),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
+        image: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
+      }))
+      .mutation(({ ctx, input }) =>
+        db.createDestination({
+          ...input,
+          authorId: ctx.user.id,
+          status: 'draft',
+        })
+      ),
+
+    update: adminProcedure
+      .input(z.object({
+        id: z.number(),
+        name: z.string().optional(),
+        slug: z.string().optional(),
+        description: z.string().optional(),
+        country: z.string().optional(),
+        latitude: z.string().optional(),
+        longitude: z.string().optional(),
+        image: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
+        publishedAt: z.date().optional(),
+      }))
+      .mutation(({ input }) => {
+        const { id, ...data } = input;
+        return db.updateDestination(id, data);
+      }),
+
+    delete: adminProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(({ input }) => db.deleteDestination(input.id)),
   }),
 });
 

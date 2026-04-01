@@ -35,6 +35,9 @@ export const pages = mysqlTable("pages", {
   slug: varchar("slug", { length: 255 }).notNull().unique(),
   content: text("content"),
   description: text("description"),
+  metaTitle: varchar("metaTitle", { length: 255 }),
+  metaDescription: varchar("metaDescription", { length: 500 }),
+  ogImage: text("ogImage"),
   status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
   authorId: int("authorId").notNull().references(() => users.id),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -54,6 +57,10 @@ export const articles = mysqlTable("articles", {
   slug: varchar("slug", { length: 255 }).notNull().unique(),
   content: text("content"),
   excerpt: text("excerpt"),
+  metaTitle: varchar("metaTitle", { length: 255 }),
+  metaDescription: varchar("metaDescription", { length: 500 }),
+  ogImage: text("ogImage"),
+  readTime: int("readTime"),
   status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
   authorId: int("authorId").notNull().references(() => users.id),
   category: varchar("category", { length: 100 }),
@@ -81,3 +88,28 @@ export const media = mysqlTable("media", {
 
 export type Media = typeof media.$inferSelect;
 export type InsertMedia = typeof media.$inferInsert;
+
+/**
+ * Destinations table for managing travel destinations
+ */
+export const destinations = mysqlTable("destinations", {
+  id: int("id").autoincrement().primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
+  description: text("description"),
+  country: varchar("country", { length: 100 }),
+  latitude: varchar("latitude", { length: 50 }),
+  longitude: varchar("longitude", { length: 50 }),
+  image: text("image"),
+  metaTitle: varchar("metaTitle", { length: 255 }),
+  metaDescription: varchar("metaDescription", { length: 500 }),
+  ogImage: text("ogImage"),
+  status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
+  authorId: int("authorId").notNull().references(() => users.id),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  publishedAt: timestamp("publishedAt"),
+});
+
+export type Destination = typeof destinations.$inferSelect;
+export type InsertDestination = typeof destinations.$inferInsert;

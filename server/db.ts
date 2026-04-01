@@ -1,6 +1,6 @@
 import { eq, desc, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, pages, articles, media, InsertPage, InsertArticle, InsertMedia } from "../drizzle/schema";
+import { InsertUser, users, pages, articles, media, destinations, InsertPage, InsertArticle, InsertMedia, InsertDestination } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -208,4 +208,62 @@ export async function deleteMedia(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   return db.delete(media).where(eq(media.id, id));
+}
+
+// CMS Destinations queries
+export async function getDestinations(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(destinations).orderBy(desc(destinations.createdAt)).limit(limit);
+}
+
+export async function getPublishedDestinations(limit = 10) {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(destinations)
+    .where(eq(destinations.status, 'published'))
+    .orderBy(desc(destinations.publishedAt))
+    .limit(limit);
+}
+
+export async function getDestinationBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(destinations).where(eq(destinations.slug, slug)).limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function getPublishedDestinationBySlug(slug: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(destinations)
+    .where(and(eq(destinations.slug, slug), eq(destinations.status, 'published')))
+    .limit(1);
+  return result.length > 0 ? result[0] : undefined;
+}
+
+export async function createDestination(data: InsertDestination) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.insert(destinations).values(data);
+}
+
+export async function updateDestination(id: number, data: Partial<InsertDestination>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.update(destinations).set(data).where(eq(destinations.id, id));
+}
+
+export async function deleteDestination(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db.delete(destinations).where(eq(destinations.id, id));
+}
+
+// Utility function to calculate reading time (in minutes)
+export function calculateReadTime(content: string | null | undefined): number {
+  if (!content) return 0;
+  const wordsPerMinute = 200;
+  const wordCount = content.trim().split(/\s+/).length;
+  return Math.ceil(wordCount / wordsPerMinute);
 }
