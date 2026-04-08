@@ -1,6 +1,6 @@
 /**
  * RichEditor — TipTap (déjà installé dans package.json)
- * Extensions : StarterKit + Link + Image + Placeholder
+ * Extensions : StarterKit + Link + Image + Placeholder + CharacterCount
  * Upload image intégré via presign tRPC → S3/R2
  */
 import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
@@ -8,6 +8,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
+import CharacterCount from "@tiptap/extension-character-count";
 import { useEffect, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -36,6 +37,7 @@ export default function RichEditor({ value, onChange, placeholder, className }: 
       Link.configure({ openOnClick: false, HTMLAttributes: { class: "text-primary underline" } }),
       Image.configure({ inline: false, HTMLAttributes: { class: "rounded-lg max-w-full my-4" } }),
       Placeholder.configure({ placeholder: placeholder ?? "Commence à écrire..." }),
+      CharacterCount,
     ],
     content: value,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
@@ -90,6 +92,11 @@ export default function RichEditor({ value, onChange, placeholder, className }: 
   }, [editor, presignMutation, uploadMediaMutation]);
 
   if (!editor) return null;
+
+  const words = editor.storage.characterCount.words();
+  const chars = editor.storage.characterCount.characters();
+  // Estimation temps de lecture (200 mots/min)
+  const readingTime = Math.max(1, Math.ceil(words / 200));
 
   const ToolbarBtn = ({ onClick, active, title, children }: {
     onClick: () => void; active?: boolean; title: string; children: React.ReactNode;
@@ -228,6 +235,21 @@ export default function RichEditor({ value, onChange, placeholder, className }: 
 
       {/* Editor content */}
       <EditorContent editor={editor} />
+
+      {/* Footer — compteur de mots / caractères / temps de lecture */}
+      <div className="flex items-center justify-end gap-3 px-4 py-1.5 border-t bg-muted/20">
+        <span className="text-xs text-muted-foreground">
+          {words} mot{words !== 1 ? "s" : ""}
+        </span>
+        <span className="text-xs text-muted-foreground/50">·</span>
+        <span className="text-xs text-muted-foreground">
+          {chars} caractère{chars !== 1 ? "s" : ""}
+        </span>
+        <span className="text-xs text-muted-foreground/50">·</span>
+        <span className="text-xs text-muted-foreground">
+          ~{readingTime} min de lecture
+        </span>
+      </div>
     </div>
   );
 }
