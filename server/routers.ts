@@ -4,6 +4,7 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import type { InsertArticle } from "../drizzle/schema";
 import * as db from "./db";
 
 // Admin-only procedure
@@ -33,7 +34,6 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getPages(input?.limit)),
 
-    // Public list - only published pages
     listPublished: publicProcedure
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getPublishedPages(input?.limit)),
@@ -42,7 +42,6 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getPageBySlug(input.slug)),
 
-    // Public get by slug - only published
     getPublishedBySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getPublishedPageBySlug(input.slug)),
@@ -56,12 +55,13 @@ export const appRouter = router({
         metaTitle: z.string().optional(),
         metaDescription: z.string().optional(),
         ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
       }))
       .mutation(({ ctx, input }) =>
         db.createPage({
           ...input,
           authorId: ctx.user.id,
-          status: 'draft',
+          status: input.status ?? 'draft',
         })
       ),
 
@@ -94,7 +94,6 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getArticles(input?.limit)),
 
-    // Public list - only published articles
     listPublished: publicProcedure
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getPublishedArticles(input?.limit)),
@@ -103,7 +102,6 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getArticleBySlug(input.slug)),
 
-    // Public get by slug - only published
     getPublishedBySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getPublishedArticleBySlug(input.slug)),
@@ -118,6 +116,7 @@ export const appRouter = router({
         metaTitle: z.string().optional(),
         metaDescription: z.string().optional(),
         ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
       }))
       .mutation(({ ctx, input }) => {
         const readTime = db.calculateReadTime(input.content);
@@ -125,7 +124,7 @@ export const appRouter = router({
           ...input,
           readTime,
           authorId: ctx.user.id,
-          status: 'draft',
+          status: input.status ?? 'draft',
         });
       }),
 
@@ -144,9 +143,9 @@ export const appRouter = router({
         publishedAt: z.date().optional(),
       }))
       .mutation(({ input }) => {
-        const { id, content, ...data } = input;
-        const updateData = { ...data };
-        if (content) {
+        const { id, content, ...rest } = input;
+        const updateData: Partial<InsertArticle> = { ...rest };
+        if (content !== undefined) {
           updateData.content = content;
           updateData.readTime = db.calculateReadTime(content);
         }
@@ -190,7 +189,6 @@ export const appRouter = router({
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getDestinations(input?.limit)),
 
-    // Public list - only published destinations
     listPublished: publicProcedure
       .input(z.object({ limit: z.number().default(10) }).optional())
       .query(({ input }) => db.getPublishedDestinations(input?.limit)),
@@ -199,7 +197,6 @@ export const appRouter = router({
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getDestinationBySlug(input.slug)),
 
-    // Public get by slug - only published
     getPublishedBySlug: publicProcedure
       .input(z.object({ slug: z.string() }))
       .query(({ input }) => db.getPublishedDestinationBySlug(input.slug)),
@@ -216,12 +213,13 @@ export const appRouter = router({
         metaTitle: z.string().optional(),
         metaDescription: z.string().optional(),
         ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
       }))
       .mutation(({ ctx, input }) =>
         db.createDestination({
           ...input,
           authorId: ctx.user.id,
-          status: 'draft',
+          status: input.status ?? 'draft',
         })
       ),
 
