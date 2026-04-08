@@ -8,16 +8,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
+import RichEditor from "@/components/RichEditor";
+import MediaPickerButton from "@/components/MediaPickerButton";
 import {
-  ArrowLeft, Save, Eye, Globe, FileText,
-  Tag, Image, ChevronDown, ChevronUp,
-  Bold, Italic, Link, List, ListOrdered, Quote, Heading2, Heading3, Code
+  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp,
 } from "lucide-react";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
-type EditorMode = "write" | "preview";
 type ContentStatus = "draft" | "published" | "archived";
 
 interface ArticleForm {
@@ -48,29 +47,16 @@ function slugify(text: string): string {
     .replace(/-+/g, "-");
 }
 
-function markdownToHtml(md: string): string {
-  return md
-    .replace(/^### (.+)$/gm, "<h3 class=\"text-lg font-semibold mt-6 mb-2\">$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2 class=\"text-xl font-bold mt-8 mb-3\">$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1 class=\"text-2xl font-bold mt-8 mb-4\">$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code class=\"bg-muted px-1 py-0.5 rounded text-sm font-mono\">$1</code>")
-    .replace(/^> (.+)$/gm, "<blockquote class=\"border-l-4 border-primary pl-4 italic text-muted-foreground my-4\">$1</blockquote>")
-    .replace(/^- (.+)$/gm, "<li class=\"ml-4 list-disc\">$1</li>")
-    .replace(/^\d+\. (.+)$/gm, "<li class=\"ml-4 list-decimal\">$1</li>")
-    .replace(/\[(.+?)\]\((.+?)\)/g, "<a href=\"$2\" class=\"text-primary underline\">$1</a>")
-    .replace(/\n\n/g, "</p><p class=\"mb-4\">")
-    .replace(/^(?!<[h|b|p|l|c])/gm, "<p class=\"mb-4\">")
-    .replace(/(?<![>])$/gm, "</p>");
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function estimateReadTime(text: string): number {
-  return Math.max(1, Math.round(countWords(text) / 200));
+function estimateReadTime(html: string): number {
+  return Math.max(1, Math.round(countWords(stripHtml(html)) / 200));
 }
 
 export default function ArticleEditor({ params }: { params?: { id?: string } }) {
@@ -79,11 +65,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
   const articleId = params?.id ? parseInt(params.id) : null;
   const isNew = !articleId;
 
-  const [mode, setMode] = useState<EditorMode>("write");
   const [seoOpen, setSeoOpen] = useState(false);
   const [slugManual, setSlugManual] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [form, setForm] = useState<ArticleForm>({
     title: "",
@@ -97,7 +81,6 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     status: "draft",
   });
 
-  // Load existing article
   const { data: existingArticle } = trpc.articles.list.useQuery(
     { limit: 200 },
     { enabled: !isNew }
@@ -143,9 +126,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
   const updateField = useCallback(<K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => {
     setForm(prev => {
       const next = { ...prev, [key]: value };
-      if (key === "title" && !slugManual) {
-        next.slug = slugify(value as string);
-      }
+      if (key === "title" && !slugManual) next.slug = slugify(value as string);
       return next;
     });
     setIsDirty(true);
@@ -155,47 +136,18 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     const saveStatus = status || form.status;
     if (!form.title.trim()) { toast.error("Le titre est obligatoire"); return; }
     if (!form.slug.trim()) { toast.error("Le slug est obligatoire"); return; }
-
     const payload = { ...form, status: saveStatus };
-
     if (isNew) {
       createMutation.mutate(payload);
     } else if (articleId) {
-      const publishedAt = saveStatus === "published" && form.status !== "published"
-        ? new Date() : undefined;
+      const publishedAt = saveStatus === "published" && form.status !== "published" ? new Date() : undefined;
       updateMutation.mutate({ id: articleId, ...payload, publishedAt });
     }
     if (status) setForm(prev => ({ ...prev, status }));
   };
 
-  // Toolbar insert helpers
-  const insertMarkdown = (before: string, after: string = "", placeholder: string = "texte") => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    const selected = form.content.substring(start, end) || placeholder;
-    const newContent =
-      form.content.substring(0, start) + before + selected + after + form.content.substring(end);
-    updateField("content", newContent);
-    setTimeout(() => {
-      ta.focus();
-      ta.setSelectionRange(start + before.length, start + before.length + selected.length);
-    }, 0);
-  };
-
-  const insertBlock = (prefix: string) => {
-    const ta = textareaRef.current;
-    if (!ta) return;
-    const start = ta.selectionStart;
-    const lineStart = form.content.lastIndexOf("\n", start - 1) + 1;
-    const newContent = form.content.substring(0, lineStart) + prefix + form.content.substring(lineStart);
-    updateField("content", newContent);
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(lineStart + prefix.length, lineStart + prefix.length); }, 0);
-  };
-
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const wordCount = countWords(form.content);
+  const wordCount = countWords(stripHtml(form.content));
   const readTime = estimateReadTime(form.content);
   const metaTitleLeft = 60 - (form.metaTitle || form.title).length;
   const metaDescLeft = 160 - (form.metaDescription || form.excerpt).length;
@@ -230,15 +182,11 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
             <span className="text-xs text-muted-foreground hidden sm:block">
               {wordCount} mots · {readTime} min de lecture
             </span>
-            <Badge
-              variant={form.status === "published" ? "default" : "secondary"}
-              className="text-xs"
-            >
+            <Badge variant={form.status === "published" ? "default" : "secondary"} className="text-xs">
               {form.status === "published" ? "Publié" : form.status === "archived" ? "Archivé" : "Brouillon"}
             </Badge>
             <Button variant="outline" size="sm" onClick={() => handleSave("draft")} disabled={isPending}>
-              <Save className="h-4 w-4 mr-1" />
-              Brouillon
+              <Save className="h-4 w-4 mr-1" />Brouillon
             </Button>
             <Button size="sm" onClick={() => handleSave("published")} disabled={isPending}>
               <Globe className="h-4 w-4 mr-1" />
@@ -252,18 +200,16 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
           {/* Editor area */}
           <div className="flex-1 flex flex-col overflow-y-auto">
             <div className="max-w-3xl mx-auto w-full px-6 py-8 space-y-6">
-              {/* Title */}
               <div>
                 <input
                   type="text"
                   value={form.title}
                   onChange={e => updateField("title", e.target.value)}
                   placeholder="Titre de l'article..."
-                  className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/40 resize-none"
+                  className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder:text-muted-foreground/40"
                 />
               </div>
 
-              {/* Slug */}
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">heldonica.fr/blog/</span>
                 <input
@@ -275,7 +221,6 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 />
               </div>
 
-              {/* Excerpt */}
               <div>
                 <Textarea
                   value={form.excerpt}
@@ -288,82 +233,12 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
               <Separator />
 
-              {/* Editor toolbar */}
-              <div className="flex items-center gap-1 flex-wrap">
-                <div className="flex items-center gap-0.5 border rounded-md p-1">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertBlock("## ")} title="Titre H2">
-                    <Heading2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertBlock("### ")} title="Titre H3">
-                    <Heading3 className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-0.5 border rounded-md p-1">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertMarkdown("**", "**", "texte en gras")} title="Gras">
-                    <Bold className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertMarkdown("*", "*", "texte en italique")} title="Italique">
-                    <Italic className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertMarkdown("`", "`", "code")} title="Code inline">
-                    <Code className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-0.5 border rounded-md p-1">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertBlock("- ")} title="Liste à puces">
-                    <List className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertBlock("1. ")} title="Liste numérotée">
-                    <ListOrdered className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertBlock("> ")} title="Citation">
-                    <Quote className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="flex items-center gap-0.5 border rounded-md p-1">
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => insertMarkdown("[", "](https://)", "texte du lien")} title="Lien">
-                    <Link className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-                <div className="ml-auto flex items-center gap-1">
-                  <Button
-                    variant={mode === "write" ? "default" : "ghost"}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setMode("write")}
-                  >
-                    <FileText className="h-3 w-3 mr-1" />Écrire
-                  </Button>
-                  <Button
-                    variant={mode === "preview" ? "default" : "ghost"}
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={() => setMode("preview")}
-                  >
-                    <Eye className="h-3 w-3 mr-1" />Aperçu
-                  </Button>
-                </div>
-              </div>
-
-              {/* Content area */}
-              {mode === "write" ? (
-                <Textarea
-                  ref={textareaRef}
-                  value={form.content}
-                  onChange={e => updateField("content", e.target.value)}
-                  placeholder="Commence à écrire... Utilise le Markdown pour formatter ton contenu.\n\n## Titre de section\n\nTon texte ici..."
-                  className="min-h-[500px] font-mono text-sm resize-y border-0 bg-muted/20 rounded-lg p-4 focus-visible:ring-1"
-                />
-              ) : (
-                <div
-                  className="min-h-[500px] prose prose-sm max-w-none p-4 bg-muted/20 rounded-lg border"
-                  dangerouslySetInnerHTML={{
-                    __html: form.content
-                      ? markdownToHtml(form.content)
-                      : "<p class='text-muted-foreground italic'>Rien à afficher. Commence à écrire dans l'onglet Écrire.</p>"
-                  }}
-                />
-              )}
+              {/* TipTap Rich Editor */}
+              <RichEditor
+                value={form.content}
+                onChange={v => updateField("content", v)}
+                placeholder="Commence à écrire... Utilise la barre d'outils ou Markdown."
+              />
 
               {/* SEO section */}
               <div className="border rounded-xl overflow-hidden">
@@ -389,7 +264,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                       <Input
                         value={form.metaTitle}
                         onChange={e => updateField("metaTitle", e.target.value)}
-                        placeholder={form.title || "Titre SEO (défaut : titre de l'article)"}
+                        placeholder={form.title || "Titre SEO"}
                         className="text-sm"
                       />
                     </div>
@@ -403,18 +278,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                       <Textarea
                         value={form.metaDescription}
                         onChange={e => updateField("metaDescription", e.target.value)}
-                        placeholder={form.excerpt || "Description SEO (défaut : extrait de l'article)"}
+                        placeholder={form.excerpt || "Description SEO"}
                         rows={2}
                         className="text-sm resize-none"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs flex items-center gap-1"><Image className="h-3 w-3" /> Image OG (URL)</Label>
-                      <Input
-                        value={form.ogImage}
-                        onChange={e => updateField("ogImage", e.target.value)}
-                        placeholder="https://heldonica.fr/images/mon-image.jpg"
-                        className="text-sm"
                       />
                     </div>
                     {/* SERP Preview */}
@@ -425,7 +291,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                       </p>
                       <p className="text-green-700 text-xs">heldonica.fr/blog/{form.slug || "mon-slug"}</p>
                       <p className="text-muted-foreground text-xs line-clamp-2">
-                        {form.metaDescription || form.excerpt || "Description de l'article qui apparaîtra dans les résultats Google..."}
+                        {form.metaDescription || form.excerpt || "Description qui apparaîtra dans Google..."}
                       </p>
                     </div>
                   </div>
@@ -436,41 +302,23 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
           {/* Sidebar */}
           <div className="w-72 border-l flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
-            {/* Publish block */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Publication</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex flex-col gap-2">
-                  <Button
-                    className="w-full"
-                    onClick={() => handleSave("published")}
-                    disabled={isPending}
-                  >
-                    <Globe className="h-4 w-4 mr-2" />
-                    {form.status === "published" ? "Mettre à jour" : "Publier"}
+                <Button className="w-full" onClick={() => handleSave("published")} disabled={isPending}>
+                  <Globe className="h-4 w-4 mr-2" />
+                  {form.status === "published" ? "Mettre à jour" : "Publier"}
+                </Button>
+                <Button variant="outline" className="w-full" onClick={() => handleSave("draft")} disabled={isPending}>
+                  <Save className="h-4 w-4 mr-2" />Enregistrer le brouillon
+                </Button>
+                {form.status === "published" && (
+                  <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => handleSave("draft")} disabled={isPending}>
+                    Dépublier
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => handleSave("draft")}
-                    disabled={isPending}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Enregistrer le brouillon
-                  </Button>
-                  {form.status === "published" && (
-                    <Button
-                      variant="ghost"
-                      className="w-full text-muted-foreground"
-                      onClick={() => handleSave("draft")}
-                      disabled={isPending}
-                    >
-                      Dépublier
-                    </Button>
-                  )}
-                </div>
+                )}
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Statut</span>
                   <Badge variant={form.status === "published" ? "default" : "secondary"} className="text-xs">
@@ -478,17 +326,14 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Mots</span>
-                  <span>{wordCount}</span>
+                  <span>Mots</span><span>{wordCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Lecture</span>
-                  <span>~{readTime} min</span>
+                  <span>Lecture</span><span>~{readTime} min</span>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Category */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1">
@@ -520,29 +365,16 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               </CardContent>
             </Card>
 
-            {/* Image à la une */}
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-1">
-                  <Image className="h-3.5 w-3.5" /> Image à la une
-                </CardTitle>
+                <CardTitle className="text-sm">Image à la une</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-2">
-                {form.ogImage && (
-                  <div className="rounded-md overflow-hidden aspect-video bg-muted">
-                    <img
-                      src={form.ogImage}
-                      alt="Image à la une"
-                      className="w-full h-full object-cover"
-                      onError={e => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  </div>
-                )}
-                <Input
+              <CardContent>
+                <MediaPickerButton
                   value={form.ogImage}
-                  onChange={e => updateField("ogImage", e.target.value)}
-                  placeholder="URL de l'image..."
-                  className="text-xs h-7"
+                  onChange={url => updateField("ogImage", url)}
+                  label="Choisir une image"
+                  folder="articles"
                 />
               </CardContent>
             </Card>

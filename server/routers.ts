@@ -8,6 +8,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { InsertArticle } from "../drizzle/schema";
 import * as db from "./db";
+import { sendTravelRequestEmails } from "./emailService";
 
 const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== 'admin') throw new TRPCError({ code: 'FORBIDDEN', message: 'Admin access required' });
@@ -137,7 +138,15 @@ export const appRouter = router({
         message: z.string().optional(),
         howDidYouFind: z.string().optional(),
       }))
-      .mutation(({ input }) => db.createTravelRequest({ ...input, status: 'new' })),
+      .mutation(async ({ input }) => {
+        // 1. Sauvegarder en base
+        const result = await db.createTravelRequest({ ...input, status: 'new' });
+        // 2. Envoyer les emails Resend (non bloquant en cas d'erreur)
+        sendTravelRequestEmails(input).catch(err =>
+          console.error("[Email] Erreur envoi emails Travel Planning:", err)
+        );
+        return result;
+      }),
     updateStatus: adminProcedure
       .input(z.object({ id: z.number(), status: z.enum(['new', 'contacted', 'in_progress', 'closed']) }))
       .mutation(({ input }) => db.updateTravelRequestStatus(input.id, input.status)),

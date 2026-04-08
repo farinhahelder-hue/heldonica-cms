@@ -1,19 +1,21 @@
 /**
- * RichEditor — éditeur TipTap avec barre d'outils complète
- * Supporte : H1/H2/H3, gras, italique, lien, liste, blockquote, code, image via upload S3
+ * RichEditor — TipTap (déjà installé dans package.json)
+ * Extensions : StarterKit + Link + Image + Placeholder
+ * Upload image intégré via presign tRPC → S3/R2
  */
 import { useEditor, EditorContent, BubbleMenu } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Image from "@tiptap/extension-image";
 import Link from "@tiptap/extension-link";
+import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import {
-  Bold, Italic, Link2, Image as ImageIcon,
-  List, ListOrdered, Quote, Code2, Minus,
-  Heading1, Heading2, Heading3, Undo, Redo,
+  Bold, Italic, Strikethrough, Heading2, Heading3,
+  List, ListOrdered, Quote, Link as LinkIcon,
+  Image as ImageIcon, Minus, Code, Undo, Redo,
 } from "lucide-react";
 
 interface RichEditorProps {
@@ -23,141 +25,208 @@ interface RichEditorProps {
   className?: string;
 }
 
-export default function RichEditor({ value, onChange, placeholder = "Commence à écrire...", className = "" }: RichEditorProps) {
-  const fileRef = useRef<HTMLInputElement>(null);
-  const presign = trpc.upload.presign.useMutation();
+export default function RichEditor({ value, onChange, placeholder, className }: RichEditorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const presignMutation = trpc.upload.presign.useMutation();
+  const uploadMediaMutation = trpc.media.upload.useMutation();
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-        codeBlock: { HTMLAttributes: { class: "language-" } },
-      }),
-      Image.configure({ allowBase64: true }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      Placeholder.configure({ placeholder }),
+      StarterKit,
+      Link.configure({ openOnClick: false, HTMLAttributes: { class: "text-primary underline" } }),
+      Image.configure({ inline: false, HTMLAttributes: { class: "rounded-lg max-w-full my-4" } }),
+      Placeholder.configure({ placeholder: placeholder ?? "Commence à écrire..." }),
     ],
-    content: value || "",
+    content: value,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
     editorProps: {
-      attributes: { class: "prose prose-stone max-w-none focus:outline-none min-h-[300px] px-4 py-3" },
+      attributes: {
+        class: "prose prose-sm max-w-none focus:outline-none min-h-[400px] p-4",
+      },
     },
   });
 
-  // Sync external value changes (e.g. loading saved content)
+  // Sync external value (load existing article)
+  const lastValue = useRef(value);
   useEffect(() => {
     if (!editor) return;
-    const current = editor.getHTML();
-    if (value !== current && value !== undefined) {
-      editor.commands.setContent(value || "", false);
+    if (value !== lastValue.current && value !== editor.getHTML()) {
+      editor.commands.setContent(value, false);
+      lastValue.current = value;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value === "" ? value : undefined]);
+  }, [editor, value]);
 
-  const handleImageUpload = async (file: File) => {
+  const addLink = useCallback(() => {
+    if (!editor) return;
+    const previous = editor.getAttributes("link").href ?? "";
+    const url = window.prompt("URL du lien :", previous);
+    if (url === null) return;
+    if (url === "") { editor.chain().focus().unsetLink().run(); return; }
+    editor.chain().focus().setLink({ href: url }).run();
+  }, [editor]);
+
+  const handleImageUpload = useCallback(async (file: File) => {
+    if (!editor) return;
     try {
-      const { uploadUrl, publicUrl } = await presign.mutateAsync({
+      const { uploadUrl, publicUrl, key } = await presignMutation.mutateAsync({
         filename: file.name,
         contentType: file.type,
-        folder: "articles",
+        folder: "media",
       });
-      await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      editor?.chain().focus().setImage({ src: publicUrl, alt: file.name }).run();
-    } catch {
-      // Fallback: base64 si S3 non configuré
-      const reader = new FileReader();
-      reader.onload = e => {
-        const src = e.target?.result as string;
-        editor?.chain().focus().setImage({ src, alt: file.name }).run();
-      };
-      reader.readAsDataURL(file);
+      const res = await fetch(uploadUrl, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!res.ok) throw new Error("Upload failed");
+      await uploadMediaMutation.mutateAsync({
+        filename: file.name,
+        url: publicUrl,
+        fileKey: key,
+        mimeType: file.type,
+        size: file.size,
+      });
+      editor.chain().focus().setImage({ src: publicUrl, alt: file.name }).run();
+      toast.success("Image insérée !");
+    } catch (e: any) {
+      toast.error(e?.message ?? "Erreur upload image");
     }
-  };
-
-  const setLink = () => {
-    const url = window.prompt("URL du lien :", editor?.getAttributes('link').href ?? "");
-    if (url === null) return;
-    if (url === "") { editor?.chain().focus().extendMarkRange('link').unsetLink().run(); return; }
-    editor?.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-  };
+  }, [editor, presignMutation, uploadMediaMutation]);
 
   if (!editor) return null;
 
-  const ToolBtn = ({ active, onClick, children, title }: { active?: boolean; onClick: () => void; children: React.ReactNode; title: string }) => (
+  const ToolbarBtn = ({ onClick, active, title, children }: {
+    onClick: () => void; active?: boolean; title: string; children: React.ReactNode;
+  }) => (
     <Button
-      type="button" variant={active ? "secondary" : "ghost"} size="sm"
-      className="h-8 w-8 p-0" onClick={onClick} title={title}
+      type="button"
+      variant={active ? "secondary" : "ghost"}
+      size="sm"
+      className="h-7 w-7 p-0"
+      onClick={onClick}
+      title={title}
     >
       {children}
     </Button>
   );
 
   return (
-    <div className={`border rounded-lg overflow-hidden bg-background ${className}`}>
+    <div className={`border rounded-xl overflow-hidden bg-background ${className ?? ""}`}>
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 p-2 border-b bg-muted/30">
-        <ToolBtn active={editor.isActive('heading', { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} title="Titre 1">
-          <Heading1 className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('heading', { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} title="Titre 2">
-          <Heading2 className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('heading', { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} title="Titre 3">
-          <Heading3 className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <div className="w-px h-6 bg-border mx-1" />
-        <ToolBtn active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} title="Gras">
-          <Bold className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italique">
-          <Italic className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('link')} onClick={setLink} title="Lien">
-          <Link2 className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <div className="w-px h-6 bg-border mx-1" />
-        <ToolBtn active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()} title="Liste à puces">
-          <List className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()} title="Liste numérotée">
-          <ListOrdered className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()} title="Citation">
-          <Quote className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()} title="Code inline">
-          <Code2 className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={false} onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Séparateur">
-          <Minus className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <div className="w-px h-6 bg-border mx-1" />
-        <ToolBtn active={false} onClick={() => fileRef.current?.click()} title="Insérer une image">
-          <ImageIcon className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <input
-          ref={fileRef} type="file" accept="image/*" className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); e.target.value = ""; }}
-        />
-        <div className="flex-1" />
-        <ToolBtn active={false} onClick={() => editor.chain().focus().undo().run()} title="Annuler">
+      <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b bg-muted/30">
+        <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="Annuler">
           <Undo className="h-3.5 w-3.5" />
-        </ToolBtn>
-        <ToolBtn active={false} onClick={() => editor.chain().focus().redo().run()} title="Rétablir">
+        </ToolbarBtn>
+        <ToolbarBtn onClick={() => editor.chain().focus().redo().run()} title="Rétablir">
           <Redo className="h-3.5 w-3.5" />
-        </ToolBtn>
+        </ToolbarBtn>
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          active={editor.isActive("heading", { level: 2 })}
+          title="Titre H2"
+        >
+          <Heading2 className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          active={editor.isActive("heading", { level: 3 })}
+          title="Titre H3"
+        >
+          <Heading3 className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive("bold")}
+          title="Gras"
+        >
+          <Bold className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          active={editor.isActive("italic")}
+          title="Italique"
+        >
+          <Italic className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          active={editor.isActive("strike")}
+          title="Barré"
+        >
+          <Strikethrough className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          active={editor.isActive("code")}
+          title="Code inline"
+        >
+          <Code className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          active={editor.isActive("bulletList")}
+          title="Liste à puces"
+        >
+          <List className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          active={editor.isActive("orderedList")}
+          title="Liste numérotée"
+        >
+          <ListOrdered className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          active={editor.isActive("blockquote")}
+          title="Citation"
+        >
+          <Quote className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => editor.chain().focus().setHorizontalRule().run()}
+          title="Séparateur"
+        >
+          <Minus className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <div className="w-px h-4 bg-border mx-1" />
+        <ToolbarBtn onClick={addLink} active={editor.isActive("link")} title="Ajouter un lien">
+          <LinkIcon className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <ToolbarBtn
+          onClick={() => fileInputRef.current?.click()}
+          title="Insérer une image"
+        >
+          <ImageIcon className="h-3.5 w-3.5" />
+        </ToolbarBtn>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={e => {
+            const file = e.target.files?.[0];
+            if (file) handleImageUpload(file);
+            e.target.value = "";
+          }}
+        />
       </div>
 
-      {/* Bubble menu — apparaît sur sélection */}
+      {/* Bubble menu (selection) */}
       <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
-        <div className="flex items-center gap-0.5 bg-popover border rounded-md shadow-md p-1">
-          <ToolBtn active={editor.isActive('bold')} onClick={() => editor.chain().focus().toggleBold().run()} title="Gras"><Bold className="h-3 w-3" /></ToolBtn>
-          <ToolBtn active={editor.isActive('italic')} onClick={() => editor.chain().focus().toggleItalic().run()} title="Italique"><Italic className="h-3 w-3" /></ToolBtn>
-          <ToolBtn active={editor.isActive('link')} onClick={setLink} title="Lien"><Link2 className="h-3 w-3" /></ToolBtn>
+        <div className="flex items-center gap-0.5 bg-popover border rounded-lg shadow-md px-1 py-0.5">
+          <ToolbarBtn onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive("bold")} title="Gras">
+            <Bold className="h-3 w-3" />
+          </ToolbarBtn>
+          <ToolbarBtn onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive("italic")} title="Italique">
+            <Italic className="h-3 w-3" />
+          </ToolbarBtn>
+          <ToolbarBtn onClick={addLink} active={editor.isActive("link")} title="Lien">
+            <LinkIcon className="h-3 w-3" />
+          </ToolbarBtn>
         </div>
       </BubbleMenu>
 
-      {/* Zone d'édition */}
+      {/* Editor content */}
       <EditorContent editor={editor} />
     </div>
   );
