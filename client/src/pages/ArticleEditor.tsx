@@ -10,8 +10,9 @@ import { Separator } from "@/components/ui/separator";
 import { trpc } from "@/lib/trpc";
 import RichEditor from "@/components/RichEditor";
 import MediaPickerButton from "@/components/MediaPickerButton";
+import SeoScore from "@/components/SeoScore";
 import {
-  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp, X, RefreshCw,
+  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp, X, RefreshCw, Search,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
@@ -26,6 +27,7 @@ interface ArticleForm {
   content: string;
   category: string;
   tags: string[];
+  focusKeyword: string;
   metaTitle: string;
   metaDescription: string;
   ogImage: string;
@@ -80,6 +82,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     content: "",
     category: "",
     tags: [],
+    focusKeyword: "",
     metaTitle: "",
     metaDescription: "",
     ogImage: "",
@@ -102,6 +105,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
           content: article.content || "",
           category: article.category || "",
           tags: Array.isArray(article.tags) ? article.tags : (article.tags ? String(article.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
+          focusKeyword: article.focusKeyword || "",
           metaTitle: article.metaTitle || "",
           metaDescription: article.metaDescription || "",
           ogImage: article.ogImage || "",
@@ -154,7 +158,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     if (!silent) toast.success(saveStatus === "published" ? "Article publié !" : "Brouillon sauvegardé !");
   }, [form, isNew, articleId, createMutation, updateMutation]);
 
-  // Autosave : déclenché 30s après la dernière modification si brouillon
+  // Autosave 30s
   const formRef = useRef(form);
   formRef.current = form;
   useEffect(() => {
@@ -168,18 +172,13 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
   }, [isDirty, isNew, handleSave]);
 
-  // Gestion des tags
+  // Tags
   const addTag = (value: string) => {
     const tag = value.trim().toLowerCase();
-    if (tag && !form.tags.includes(tag)) {
-      updateField("tags", [...form.tags, tag]);
-    }
+    if (tag && !form.tags.includes(tag)) updateField("tags", [...form.tags, tag]);
     setTagInput("");
   };
-
-  const removeTag = (tag: string) => {
-    updateField("tags", form.tags.filter(t => t !== tag));
-  };
+  const removeTag = (tag: string) => updateField("tags", form.tags.filter(t => t !== tag));
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const wordCount = countWords(stripHtml(form.content));
@@ -274,7 +273,6 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
               <Separator />
 
-              {/* TipTap Rich Editor */}
               <RichEditor
                 value={form.content}
                 onChange={v => updateField("content", v)}
@@ -343,6 +341,39 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
           {/* Sidebar */}
           <div className="w-72 border-l flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
+
+            {/* Score SEO */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-1">
+                  <Search className="h-3.5 w-3.5" /> Score SEO
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="space-y-1">
+                  <Label className="text-xs">Mot-clé focus</Label>
+                  <Input
+                    value={form.focusKeyword}
+                    onChange={e => updateField("focusKeyword", e.target.value)}
+                    placeholder="ex: slow travel portugal"
+                    className="text-xs h-7"
+                  />
+                </div>
+                <SeoScore
+                  title={form.title}
+                  excerpt={form.excerpt}
+                  content={form.content}
+                  metaTitle={form.metaTitle}
+                  metaDescription={form.metaDescription}
+                  ogImage={form.ogImage}
+                  slug={form.slug}
+                  tags={form.tags}
+                  focusKeyword={form.focusKeyword}
+                  category={form.category}
+                />
+              </CardContent>
+            </Card>
+
             {/* Publication */}
             <Card>
               <CardHeader className="pb-2">
@@ -428,15 +459,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 {form.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {form.tags.map(tag => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full"
-                      >
+                      <span key={tag} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
                         #{tag}
-                        <button
-                          onClick={() => removeTag(tag)}
-                          className="hover:text-destructive transition-colors"
-                        >
+                        <button onClick={() => removeTag(tag)} className="hover:text-destructive transition-colors">
                           <X className="h-2.5 w-2.5" />
                         </button>
                       </span>
@@ -446,19 +471,12 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 <Input
                   value={tagInput}
                   onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === "Enter" || e.key === ",") {
-                      e.preventDefault();
-                      addTag(tagInput);
-                    }
-                  }}
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
                   onBlur={() => tagInput.trim() && addTag(tagInput)}
                   placeholder="Ajouter un tag + Entrée"
                   className="text-xs h-7"
                 />
-                <p className="text-xs text-muted-foreground">
-                  Sépare par une virgule ou appuie sur Entrée
-                </p>
+                <p className="text-xs text-muted-foreground">Sépare par une virgule ou appuie sur Entrée</p>
               </CardContent>
             </Card>
 
@@ -470,11 +488,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               <CardContent className="space-y-2">
                 {form.ogImage && (
                   <div className="relative rounded-lg overflow-hidden aspect-video bg-muted">
-                    <img
-                      src={form.ogImage}
-                      alt="Image à la une"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={form.ogImage} alt="Image à la une" className="w-full h-full object-cover" />
                     <button
                       onClick={() => updateField("ogImage", "")}
                       className="absolute top-1 right-1 bg-background/80 hover:bg-background rounded-full p-0.5 transition-colors"
