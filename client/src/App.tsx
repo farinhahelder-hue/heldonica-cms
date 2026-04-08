@@ -1,59 +1,37 @@
-import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
-import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
+import { Switch, Route } from "wouter";
+import { useAuth } from "./_core/hooks/useAuth";
+import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import PagesManager from "./pages/PagesManager";
 import PageEditor from "./pages/PageEditor";
 import ArticlesManager from "./pages/ArticlesManager";
 import ArticleEditor from "./pages/ArticleEditor";
 import Destinations from "./pages/Destinations";
-import Footer from "./components/Footer";
+import MediaManager from "./pages/MediaManager";
+import TravelPlanningRequests from "./pages/TravelPlanningRequests";
 
-function Router() {
+function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" /></div>;
+  if (!user) { window.location.href = "/login"; return null; }
+  return <Component />;
+}
+
+export default function App() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/dashboard" component={Dashboard} />
-      {/* Pages */}
-      <Route path="/pages" component={PagesManager} />
-      <Route path="/pages/new" component={PageEditor} />
-      <Route path="/pages/edit/:id">
-        {(params) => <PageEditor params={params} />}
-      </Route>
-      {/* Articles */}
-      <Route path="/articles" component={ArticlesManager} />
-      <Route path="/articles/new" component={ArticleEditor} />
-      <Route path="/articles/edit/:id">
-        {(params) => <ArticleEditor params={params} />}
-      </Route>
-      {/* Destinations */}
-      <Route path="/destinations" component={Destinations} />
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
+      <Route path="/login" component={Login} />
+      <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
+      <Route path="/pages" component={() => <ProtectedRoute component={PagesManager} />} />
+      <Route path="/pages/new" component={() => <ProtectedRoute component={PageEditor} />} />
+      <Route path="/pages/edit/:id" component={() => <ProtectedRoute component={PageEditor} />} />
+      <Route path="/articles" component={() => <ProtectedRoute component={ArticlesManager} />} />
+      <Route path="/articles/new" component={() => <ProtectedRoute component={ArticleEditor} />} />
+      <Route path="/articles/edit/:id" component={() => <ProtectedRoute component={ArticleEditor} />} />
+      <Route path="/destinations" component={() => <ProtectedRoute component={Destinations} />} />
+      <Route path="/media" component={() => <ProtectedRoute component={MediaManager} />} />
+      <Route path="/travel-planning" component={() => <ProtectedRoute component={TravelPlanningRequests} />} />
+      <Route component={() => <ProtectedRoute component={Dashboard} />} />
     </Switch>
   );
 }
-
-function App() {
-  return (
-    <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <Toaster />
-          <div className="flex flex-col min-h-screen">
-            <main className="flex-1">
-              <Router />
-            </main>
-            <Footer />
-          </div>
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
-  );
-}
-
-export default App;
