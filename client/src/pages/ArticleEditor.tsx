@@ -11,9 +11,9 @@ import { trpc } from "@/lib/trpc";
 import RichEditor from "@/components/RichEditor";
 import MediaPickerButton from "@/components/MediaPickerButton";
 import {
-  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp,
+  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp, X, RefreshCw,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 
@@ -25,6 +25,7 @@ interface ArticleForm {
   excerpt: string;
   content: string;
   category: string;
+  tags: string[];
   metaTitle: string;
   metaDescription: string;
   ogImage: string;
@@ -68,6 +69,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
   const [seoOpen, setSeoOpen] = useState(false);
   const [slugManual, setSlugManual] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [tagInput, setTagInput] = useState("");
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [form, setForm] = useState<ArticleForm>({
     title: "",
@@ -75,6 +79,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     excerpt: "",
     content: "",
     category: "",
+    tags: [],
     metaTitle: "",
     metaDescription: "",
     ogImage: "",
@@ -96,6 +101,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
           excerpt: article.excerpt || "",
           content: article.content || "",
           category: article.category || "",
+          tags: Array.isArray(article.tags) ? article.tags : (article.tags ? String(article.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
           metaTitle: article.metaTitle || "",
           metaDescription: article.metaDescription || "",
           ogImage: article.ogImage || "",
@@ -110,6 +116,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     onSuccess: (data: any) => {
       toast.success("Article créé avec succès !");
       setIsDirty(false);
+      setLastSaved(new Date());
       navigate(`/articles/edit/${data.id}`);
     },
     onError: (error: any) => toast.error(error.message || "Erreur lors de la création"),
@@ -117,8 +124,8 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
   const updateMutation = trpc.articles.update.useMutation({
     onSuccess: () => {
-      toast.success("Article sauvegardé !");
       setIsDirty(false);
+      setLastSaved(new Date());
     },
     onError: (error: any) => toast.error(error.message || "Erreur lors de la sauvegarde"),
   });
@@ -132,10 +139,10 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     setIsDirty(true);
   }, [slugManual]);
 
-  const handleSave = (status?: ContentStatus) => {
+  const handleSave = useCallback((status?: ContentStatus, silent = false) => {
     const saveStatus = status || form.status;
-    if (!form.title.trim()) { toast.error("Le titre est obligatoire"); return; }
-    if (!form.slug.trim()) { toast.error("Le slug est obligatoire"); return; }
+    if (!form.title.trim()) { if (!silent) toast.error("Le titre est obligatoire"); return; }
+    if (!form.slug.trim()) { if (!silent) toast.error("Le slug est obligatoire"); return; }
     const payload = { ...form, status: saveStatus };
     if (isNew) {
       createMutation.mutate(payload);
@@ -144,6 +151,34 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
       updateMutation.mutate({ id: articleId, ...payload, publishedAt });
     }
     if (status) setForm(prev => ({ ...prev, status }));
+    if (!silent) toast.success(saveStatus === "published" ? "Article publié !" : "Brouillon sauvegardé !");
+  }, [form, isNew, articleId, createMutation, updateMutation]);
+
+  // Autosave : déclenché 30s après la dernière modification si brouillon
+  const formRef = useRef(form);
+  formRef.current = form;
+  useEffect(() => {
+    if (!isDirty || isNew) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = setTimeout(() => {
+      if (formRef.current.title.trim() && formRef.current.slug.trim()) {
+        handleSave(undefined, true);
+      }
+    }, 30_000);
+    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+  }, [isDirty, isNew, handleSave]);
+
+  // Gestion des tags
+  const addTag = (value: string) => {
+    const tag = value.trim().toLowerCase();
+    if (tag && !form.tags.includes(tag)) {
+      updateField("tags", [...form.tags, tag]);
+    }
+    setTagInput("");
+  };
+
+  const removeTag = (tag: string) => {
+    updateField("tags", form.tags.filter(t => t !== tag));
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
@@ -177,10 +212,16 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               {isNew ? "Nouvel article" : "Modifier l'article"}
             </span>
             {isDirty && <Badge variant="outline" className="text-xs">Non sauvegardé</Badge>}
+            {!isDirty && lastSaved && (
+              <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
+                <RefreshCw className="h-2.5 w-2.5" />
+                Sauvegardé {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground hidden sm:block">
-              {wordCount} mots · {readTime} min de lecture
+              {wordCount} mots · {readTime} min
             </span>
             <Badge variant={form.status === "published" ? "default" : "secondary"} className="text-xs">
               {form.status === "published" ? "Publié" : form.status === "archived" ? "Archivé" : "Brouillon"}
@@ -302,6 +343,7 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
           {/* Sidebar */}
           <div className="w-72 border-l flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
+            {/* Publication */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Publication</CardTitle>
@@ -331,9 +373,19 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Lecture</span><span>~{readTime} min</span>
                 </div>
+                {lastSaved && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Autosave</span>
+                    <span className="flex items-center gap-1">
+                      <RefreshCw className="h-2.5 w-2.5" />
+                      {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
+            {/* Catégorie */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-1">
@@ -365,15 +417,76 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               </CardContent>
             </Card>
 
+            {/* Tags */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-1">
+                  <Tag className="h-3.5 w-3.5" /> Tags & mots-clés
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {form.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {form.tags.map(tag => (
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full"
+                      >
+                        #{tag}
+                        <button
+                          onClick={() => removeTag(tag)}
+                          className="hover:text-destructive transition-colors"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <Input
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      addTag(tagInput);
+                    }
+                  }}
+                  onBlur={() => tagInput.trim() && addTag(tagInput)}
+                  placeholder="Ajouter un tag + Entrée"
+                  className="text-xs h-7"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sépare par une virgule ou appuie sur Entrée
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Image à la une */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm">Image à la une</CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-2">
+                {form.ogImage && (
+                  <div className="relative rounded-lg overflow-hidden aspect-video bg-muted">
+                    <img
+                      src={form.ogImage}
+                      alt="Image à la une"
+                      className="w-full h-full object-cover"
+                    />
+                    <button
+                      onClick={() => updateField("ogImage", "")}
+                      className="absolute top-1 right-1 bg-background/80 hover:bg-background rounded-full p-0.5 transition-colors"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
                 <MediaPickerButton
                   value={form.ogImage}
                   onChange={url => updateField("ogImage", url)}
-                  label="Choisir une image"
+                  label={form.ogImage ? "Changer l'image" : "Choisir une image"}
                   folder="articles"
                 />
               </CardContent>
