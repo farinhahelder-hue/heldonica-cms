@@ -93,9 +93,7 @@ export default function ArticleEditor({
   const [slugManual, setSlugManual] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const [autosaveStatus, setAutosaveStatus] = useState<
-    "modified" | "saving" | "saved" | null
-  >(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<"idle" | "saving" | "saved">(null);
   const [tagInput, setTagInput] = useState("");
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -216,19 +214,19 @@ export default function ArticleEditor({
     [form, isNew, articleId, createMutation, updateMutation]
   );
 
-  // Autosave 5s
+  // Autosave 30s
   const formRef = useRef(form);
   formRef.current = form;
   useEffect(() => {
     if (!isDirty || isNew) return;
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    setAutosaveStatus("modified");
+    setAutosaveStatus("idle");
     autosaveTimerRef.current = setTimeout(() => {
       setAutosaveStatus("saving");
       if (formRef.current.title.trim() && formRef.current.slug.trim()) {
         handleSave(undefined, true);
       }
-    }, 5000);
+    }, 30000);
     return () => {
       if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     };
@@ -298,7 +296,7 @@ export default function ArticleEditor({
             <span className="text-sm text-muted-foreground">
               {isNew ? "Nouvel article" : "Modifier l'article"}
             </span>
-            {autosaveStatus === "modified" && (
+            {autosaveStatus === "idle" && (
               <Badge variant="outline" className="text-xs">
                 Modifié
               </Badge>
