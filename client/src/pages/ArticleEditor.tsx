@@ -12,7 +12,15 @@ import RichEditor from "@/components/RichEditor";
 import MediaPickerButton from "@/components/MediaPickerButton";
 import SeoScore from "@/components/SeoScore";
 import {
-  ArrowLeft, Save, Globe, Tag, ChevronDown, ChevronUp, X, RefreshCw, Search,
+  ArrowLeft,
+  Save,
+  Globe,
+  Tag,
+  ChevronDown,
+  ChevronUp,
+  X,
+  RefreshCw,
+  Search,
 } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
@@ -35,8 +43,14 @@ interface ArticleForm {
 }
 
 const CATEGORIES = [
-  "Slow Travel", "Voyage en couple", "Éco-responsable", "Hors sentiers battus",
-  "Carnet de voyage", "Coulisses Heldonica", "Expert hôtelier", "Découvertes locales",
+  "Slow Travel",
+  "Voyage en couple",
+  "Éco-responsable",
+  "Hors sentiers battus",
+  "Carnet de voyage",
+  "Coulisses Heldonica",
+  "Expert hôtelier",
+  "Découvertes locales",
 ];
 
 function slugify(text: string): string {
@@ -51,7 +65,10 @@ function slugify(text: string): string {
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  return html
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function countWords(text: string): number {
@@ -62,7 +79,11 @@ function estimateReadTime(html: string): number {
   return Math.max(1, Math.round(countWords(stripHtml(html)) / 200));
 }
 
-export default function ArticleEditor({ params }: { params?: { id?: string } }) {
+export default function ArticleEditor({
+  params,
+}: {
+  params?: { id?: string };
+}) {
   const { user } = useAuth();
   const [, navigate] = useLocation();
   const articleId = params?.id ? parseInt(params.id) : null;
@@ -72,6 +93,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
   const [slugManual, setSlugManual] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    "modified" | "saving" | "saved" | null
+  >(null);
   const [tagInput, setTagInput] = useState("");
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,12 +128,19 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
           excerpt: article.excerpt || "",
           content: article.content || "",
           category: article.category || "",
-          tags: Array.isArray(article.tags) ? article.tags : (article.tags ? String(article.tags).split(",").map((t: string) => t.trim()).filter(Boolean) : []),
+          tags: Array.isArray(article.tags)
+            ? article.tags
+            : article.tags
+              ? String(article.tags)
+                  .split(",")
+                  .map((t: string) => t.trim())
+                  .filter(Boolean)
+              : [],
           focusKeyword: article.focusKeyword || "",
           metaTitle: article.metaTitle || "",
           metaDescription: article.metaDescription || "",
           ogImage: article.ogImage || "",
-          status: article.status as ContentStatus || "draft",
+          status: (article.status as ContentStatus) || "draft",
         });
         setSlugManual(true);
       }
@@ -123,62 +154,113 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
       setLastSaved(new Date());
       navigate(`/articles/edit/${data.id}`);
     },
-    onError: (error: any) => toast.error(error.message || "Erreur lors de la création"),
+    onError: (error: any) =>
+      toast.error(error.message || "Erreur lors de la création"),
   });
 
   const updateMutation = trpc.articles.update.useMutation({
     onSuccess: () => {
       setIsDirty(false);
       setLastSaved(new Date());
+      setAutosaveStatus("saved");
+      setTimeout(() => setAutosaveStatus(null), 3000);
     },
-    onError: (error: any) => toast.error(error.message || "Erreur lors de la sauvegarde"),
+    onError: (error: any) => {
+      toast.error(error.message || "Erreur lors de la sauvegarde");
+      setAutosaveStatus(null);
+    },
   });
 
-  const updateField = useCallback(<K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => {
-    setForm(prev => {
-      const next = { ...prev, [key]: value };
-      if (key === "title" && !slugManual) next.slug = slugify(value as string);
-      return next;
-    });
-    setIsDirty(true);
-  }, [slugManual]);
+  const updateField = useCallback(
+    <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => {
+      setForm(prev => {
+        const next = { ...prev, [key]: value };
+        if (key === "title" && !slugManual)
+          next.slug = slugify(value as string);
+        return next;
+      });
+      setIsDirty(true);
+    },
+    [slugManual]
+  );
 
-  const handleSave = useCallback((status?: ContentStatus, silent = false) => {
-    const saveStatus = status || form.status;
-    if (!form.title.trim()) { if (!silent) toast.error("Le titre est obligatoire"); return; }
-    if (!form.slug.trim()) { if (!silent) toast.error("Le slug est obligatoire"); return; }
-    const payload = { ...form, status: saveStatus };
-    if (isNew) {
-      createMutation.mutate(payload);
-    } else if (articleId) {
-      const publishedAt = saveStatus === "published" && form.status !== "published" ? new Date() : undefined;
-      updateMutation.mutate({ id: articleId, ...payload, publishedAt });
-    }
-    if (status) setForm(prev => ({ ...prev, status }));
-    if (!silent) toast.success(saveStatus === "published" ? "Article publié !" : "Brouillon sauvegardé !");
-  }, [form, isNew, articleId, createMutation, updateMutation]);
+  const handleSave = useCallback(
+    (status?: ContentStatus, silent = false) => {
+      const saveStatus = status || form.status;
+      if (!form.title.trim()) {
+        if (!silent) toast.error("Le titre est obligatoire");
+        return;
+      }
+      if (!form.slug.trim()) {
+        if (!silent) toast.error("Le slug est obligatoire");
+        return;
+      }
+      const payload = { ...form, status: saveStatus };
+      if (isNew) {
+        createMutation.mutate(payload);
+      } else if (articleId) {
+        const publishedAt =
+          saveStatus === "published" && form.status !== "published"
+            ? new Date()
+            : undefined;
+        updateMutation.mutate({ id: articleId, ...payload, publishedAt });
+      }
+      if (status) setForm(prev => ({ ...prev, status }));
+      if (!silent)
+        toast.success(
+          saveStatus === "published"
+            ? "Article publié !"
+            : "Brouillon sauvegardé !"
+        );
+    },
+    [form, isNew, articleId, createMutation, updateMutation]
+  );
 
-  // Autosave 30s
+  // Autosave 5s
   const formRef = useRef(form);
   formRef.current = form;
   useEffect(() => {
     if (!isDirty || isNew) return;
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    setAutosaveStatus("modified");
     autosaveTimerRef.current = setTimeout(() => {
+      setAutosaveStatus("saving");
       if (formRef.current.title.trim() && formRef.current.slug.trim()) {
         handleSave(undefined, true);
       }
-    }, 30_000);
-    return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
+    }, 5000);
+    return () => {
+      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    };
   }, [isDirty, isNew, handleSave]);
+
+  // Cmd/Ctrl+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (!isNew && isDirty) {
+          setAutosaveStatus("saving");
+          handleSave(undefined, true);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isNew, isDirty, handleSave]);
 
   // Tags
   const addTag = (value: string) => {
     const tag = value.trim().toLowerCase();
-    if (tag && !form.tags.includes(tag)) updateField("tags", [...form.tags, tag]);
+    if (tag && !form.tags.includes(tag))
+      updateField("tags", [...form.tags, tag]);
     setTagInput("");
   };
-  const removeTag = (tag: string) => updateField("tags", form.tags.filter(t => t !== tag));
+  const removeTag = (tag: string) =>
+    updateField(
+      "tags",
+      form.tags.filter(t => t !== tag)
+    );
 
   const isPending = createMutation.isPending || updateMutation.isPending;
   const wordCount = countWords(stripHtml(form.content));
@@ -190,7 +272,9 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Accès réservé aux administrateurs.</p>
+          <p className="text-muted-foreground">
+            Accès réservé aux administrateurs.
+          </p>
         </div>
       </DashboardLayout>
     );
@@ -202,7 +286,11 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
         {/* Top bar */}
         <div className="flex items-center justify-between px-6 py-3 border-b bg-background sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="sm" onClick={() => navigate("/articles")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate("/articles")}
+            >
               <ArrowLeft className="h-4 w-4 mr-1" />
               Articles
             </Button>
@@ -210,11 +298,34 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
             <span className="text-sm text-muted-foreground">
               {isNew ? "Nouvel article" : "Modifier l'article"}
             </span>
-            {isDirty && <Badge variant="outline" className="text-xs">Non sauvegardé</Badge>}
-            {!isDirty && lastSaved && (
+            {autosaveStatus === "modified" && (
+              <Badge variant="outline" className="text-xs">
+                Modifié
+              </Badge>
+            )}
+            {autosaveStatus === "saving" && (
+              <Badge variant="secondary" className="text-xs">
+                Sauvegarde...
+              </Badge>
+            )}
+            {autosaveStatus === "saved" && (
               <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
                 <RefreshCw className="h-2.5 w-2.5" />
-                Sauvegardé {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                Sauvegardé{" "}
+                {lastSaved?.toLocaleTimeString("fr-FR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+            )}
+            {!autosaveStatus && !isDirty && lastSaved && (
+              <span className="text-xs text-muted-foreground hidden sm:flex items-center gap-1">
+                <RefreshCw className="h-2.5 w-2.5" />
+                Sauvegardé{" "}
+                {lastSaved.toLocaleTimeString("fr-FR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </span>
             )}
           </div>
@@ -222,13 +333,30 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
             <span className="text-xs text-muted-foreground hidden sm:block">
               {wordCount} mots · {readTime} min
             </span>
-            <Badge variant={form.status === "published" ? "default" : "secondary"} className="text-xs">
-              {form.status === "published" ? "Publié" : form.status === "archived" ? "Archivé" : "Brouillon"}
+            <Badge
+              variant={form.status === "published" ? "default" : "secondary"}
+              className="text-xs"
+            >
+              {form.status === "published"
+                ? "Publié"
+                : form.status === "archived"
+                  ? "Archivé"
+                  : "Brouillon"}
             </Badge>
-            <Button variant="outline" size="sm" onClick={() => handleSave("draft")} disabled={isPending}>
-              <Save className="h-4 w-4 mr-1" />Brouillon
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleSave("draft")}
+              disabled={isPending}
+            >
+              <Save className="h-4 w-4 mr-1" />
+              Brouillon
             </Button>
-            <Button size="sm" onClick={() => handleSave("published")} disabled={isPending}>
+            <Button
+              size="sm"
+              onClick={() => handleSave("published")}
+              disabled={isPending}
+            >
               <Globe className="h-4 w-4 mr-1" />
               {form.status === "published" ? "Mettre à jour" : "Publier"}
             </Button>
@@ -251,11 +379,16 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               </div>
 
               <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">heldonica.fr/blog/</span>
+                <span className="text-muted-foreground">
+                  heldonica.fr/blog/
+                </span>
                 <input
                   type="text"
                   value={form.slug}
-                  onChange={e => { setSlugManual(true); updateField("slug", e.target.value); }}
+                  onChange={e => {
+                    setSlugManual(true);
+                    updateField("slug", e.target.value);
+                  }}
                   placeholder="mon-article-slug"
                   className="flex-1 bg-transparent border-b border-dashed border-border outline-none text-muted-foreground hover:border-primary focus:border-primary transition-colors"
                 />
@@ -289,14 +422,20 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                     <Globe className="h-4 w-4 text-muted-foreground" />
                     SEO & Métadonnées
                   </span>
-                  {seoOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {seoOpen ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
                 </button>
                 {seoOpen && (
                   <div className="px-4 pb-4 space-y-4 border-t bg-muted/10">
                     <div className="space-y-1 pt-4">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs">Meta Title</Label>
-                        <span className={`text-xs ${metaTitleLeft < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                        <span
+                          className={`text-xs ${metaTitleLeft < 0 ? "text-destructive" : "text-muted-foreground"}`}
+                        >
                           {metaTitleLeft} caractères restants
                         </span>
                       </div>
@@ -310,13 +449,17 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                     <div className="space-y-1">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs">Meta Description</Label>
-                        <span className={`text-xs ${metaDescLeft < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                        <span
+                          className={`text-xs ${metaDescLeft < 0 ? "text-destructive" : "text-muted-foreground"}`}
+                        >
                           {metaDescLeft} caractères restants
                         </span>
                       </div>
                       <Textarea
                         value={form.metaDescription}
-                        onChange={e => updateField("metaDescription", e.target.value)}
+                        onChange={e =>
+                          updateField("metaDescription", e.target.value)
+                        }
                         placeholder={form.excerpt || "Description SEO"}
                         rows={2}
                         className="text-sm resize-none"
@@ -324,13 +467,19 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                     </div>
                     {/* SERP Preview */}
                     <div className="rounded-lg border bg-background p-3 space-y-1">
-                      <p className="text-xs text-muted-foreground mb-2 font-medium">Aperçu Google</p>
+                      <p className="text-xs text-muted-foreground mb-2 font-medium">
+                        Aperçu Google
+                      </p>
                       <p className="text-blue-600 text-sm font-medium truncate">
                         {form.metaTitle || form.title || "Titre de l'article"}
                       </p>
-                      <p className="text-green-700 text-xs">heldonica.fr/blog/{form.slug || "mon-slug"}</p>
+                      <p className="text-green-700 text-xs">
+                        heldonica.fr/blog/{form.slug || "mon-slug"}
+                      </p>
                       <p className="text-muted-foreground text-xs line-clamp-2">
-                        {form.metaDescription || form.excerpt || "Description qui apparaîtra dans Google..."}
+                        {form.metaDescription ||
+                          form.excerpt ||
+                          "Description qui apparaîtra dans Google..."}
                       </p>
                     </div>
                   </div>
@@ -341,7 +490,6 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
 
           {/* Sidebar */}
           <div className="w-72 border-l flex flex-col gap-4 p-4 overflow-y-auto shrink-0">
-
             {/* Score SEO */}
             <Card>
               <CardHeader className="pb-2">
@@ -380,36 +528,65 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 <CardTitle className="text-sm">Publication</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full" onClick={() => handleSave("published")} disabled={isPending}>
+                <Button
+                  className="w-full"
+                  onClick={() => handleSave("published")}
+                  disabled={isPending}
+                >
                   <Globe className="h-4 w-4 mr-2" />
                   {form.status === "published" ? "Mettre à jour" : "Publier"}
                 </Button>
-                <Button variant="outline" className="w-full" onClick={() => handleSave("draft")} disabled={isPending}>
-                  <Save className="h-4 w-4 mr-2" />Enregistrer le brouillon
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => handleSave("draft")}
+                  disabled={isPending}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Enregistrer le brouillon
                 </Button>
                 {form.status === "published" && (
-                  <Button variant="ghost" className="w-full text-muted-foreground" onClick={() => handleSave("draft")} disabled={isPending}>
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => handleSave("draft")}
+                    disabled={isPending}
+                  >
                     Dépublier
                   </Button>
                 )}
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>Statut</span>
-                  <Badge variant={form.status === "published" ? "default" : "secondary"} className="text-xs">
-                    {form.status === "published" ? "Publié" : form.status === "archived" ? "Archivé" : "Brouillon"}
+                  <Badge
+                    variant={
+                      form.status === "published" ? "default" : "secondary"
+                    }
+                    className="text-xs"
+                  >
+                    {form.status === "published"
+                      ? "Publié"
+                      : form.status === "archived"
+                        ? "Archivé"
+                        : "Brouillon"}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Mots</span><span>{wordCount}</span>
+                  <span>Mots</span>
+                  <span>{wordCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Lecture</span><span>~{readTime} min</span>
+                  <span>Lecture</span>
+                  <span>~{readTime} min</span>
                 </div>
                 {lastSaved && (
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>Autosave</span>
                     <span className="flex items-center gap-1">
                       <RefreshCw className="h-2.5 w-2.5" />
-                      {lastSaved.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                      {lastSaved.toLocaleTimeString("fr-FR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
                     </span>
                   </div>
                 )}
@@ -428,7 +605,12 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                   {CATEGORIES.map(cat => (
                     <button
                       key={cat}
-                      onClick={() => updateField("category", form.category === cat ? "" : cat)}
+                      onClick={() =>
+                        updateField(
+                          "category",
+                          form.category === cat ? "" : cat
+                        )
+                      }
                       className={`text-xs px-2 py-1 rounded-full border transition-colors ${
                         form.category === cat
                           ? "bg-primary text-primary-foreground border-primary"
@@ -459,9 +641,15 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 {form.tags.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {form.tags.map(tag => (
-                      <span key={tag} className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full">
+                      <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 text-xs bg-muted px-2 py-0.5 rounded-full"
+                      >
                         #{tag}
-                        <button onClick={() => removeTag(tag)} className="hover:text-destructive transition-colors">
+                        <button
+                          onClick={() => removeTag(tag)}
+                          className="hover:text-destructive transition-colors"
+                        >
                           <X className="h-2.5 w-2.5" />
                         </button>
                       </span>
@@ -471,12 +659,19 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
                 <Input
                   value={tagInput}
                   onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(tagInput); } }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" || e.key === ",") {
+                      e.preventDefault();
+                      addTag(tagInput);
+                    }
+                  }}
                   onBlur={() => tagInput.trim() && addTag(tagInput)}
                   placeholder="Ajouter un tag + Entrée"
                   className="text-xs h-7"
                 />
-                <p className="text-xs text-muted-foreground">Sépare par une virgule ou appuie sur Entrée</p>
+                <p className="text-xs text-muted-foreground">
+                  Sépare par une virgule ou appuie sur Entrée
+                </p>
               </CardContent>
             </Card>
 
@@ -488,7 +683,11 @@ export default function ArticleEditor({ params }: { params?: { id?: string } }) 
               <CardContent className="space-y-2">
                 {form.ogImage && (
                   <div className="relative rounded-lg overflow-hidden aspect-video bg-muted">
-                    <img src={form.ogImage} alt="Image à la une" className="w-full h-full object-cover" />
+                    <img
+                      src={form.ogImage}
+                      alt="Image à la une"
+                      className="w-full h-full object-cover"
+                    />
                     <button
                       onClick={() => updateField("ogImage", "")}
                       className="absolute top-1 right-1 bg-background/80 hover:bg-background rounded-full p-0.5 transition-colors"
