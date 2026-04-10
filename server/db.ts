@@ -176,6 +176,12 @@ export async function updateTravelRequestStatus(id: number, status: 'new' | 'con
   const db = await getDb(); if (!db) throw new Error("Database not available");
   return db.update(travelRequests).set({ status }).where(eq(travelRequests.id, id));
 }
+export async function updateTravelRequest(id: number, data: { notes?: string }) {
+  const db = await getDb(); if (!db) throw new Error("Database not available");
+  const updateData: Record<string, unknown> = { updatedAt: new Date() };
+  if (data.notes !== undefined) updateData.notes = data.notes;
+  return db.update(travelRequests).set(updateData).where(eq(travelRequests.id, id));
+}
 
 export function calculateReadTime(content: string | null | undefined): number {
   if (!content) return 0;
