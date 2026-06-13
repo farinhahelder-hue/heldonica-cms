@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import { int, json, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -45,6 +45,10 @@ export const articles = mysqlTable("articles", {
   status: mysqlEnum("status", ["draft", "published", "archived"]).default("draft").notNull(),
   authorId: int("authorId").notNull().references(() => users.id),
   category: varchar("category", { length: 100 }),
+  // --- nouvelles colonnes ---
+  tags: json("tags").$type<string[]>().default([]),
+  focusKeyword: varchar("focusKeyword", { length: 100 }),
+  // --------------------------
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   publishedAt: timestamp("publishedAt"),

@@ -80,13 +80,39 @@ export const appRouter = router({
     getBySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => db.getArticleBySlug(input.slug)),
     getPublishedBySlug: publicProcedure.input(z.object({ slug: z.string() })).query(({ input }) => db.getPublishedArticleBySlug(input.slug)),
     create: adminProcedure
-      .input(z.object({ title: z.string().min(1), slug: z.string().min(1), content: z.string().optional(), excerpt: z.string().optional(), category: z.string().optional(), metaTitle: z.string().optional(), metaDescription: z.string().optional(), ogImage: z.string().optional(), status: z.enum(['draft', 'published', 'archived']).optional() }))
+      .input(z.object({
+        title: z.string().min(1),
+        slug: z.string().min(1),
+        content: z.string().optional(),
+        excerpt: z.string().optional(),
+        category: z.string().optional(),
+        tags: z.array(z.string()).optional().default([]),
+        focusKeyword: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
+      }))
       .mutation(({ ctx, input }) => {
         const readTime = db.calculateReadTime(input.content);
         return db.createArticle({ ...input, readTime, authorId: ctx.user.id, status: input.status ?? 'draft' });
       }),
     update: adminProcedure
-      .input(z.object({ id: z.number(), title: z.string().optional(), slug: z.string().optional(), content: z.string().optional(), excerpt: z.string().optional(), category: z.string().optional(), metaTitle: z.string().optional(), metaDescription: z.string().optional(), ogImage: z.string().optional(), status: z.enum(['draft', 'published', 'archived']).optional(), publishedAt: z.date().optional() }))
+      .input(z.object({
+        id: z.number(),
+        title: z.string().optional(),
+        slug: z.string().optional(),
+        content: z.string().optional(),
+        excerpt: z.string().optional(),
+        category: z.string().optional(),
+        tags: z.array(z.string()).optional(),
+        focusKeyword: z.string().optional(),
+        metaTitle: z.string().optional(),
+        metaDescription: z.string().optional(),
+        ogImage: z.string().optional(),
+        status: z.enum(['draft', 'published', 'archived']).optional(),
+        publishedAt: z.date().optional(),
+      }))
       .mutation(({ input }) => {
         const { id, content, ...rest } = input;
         const updateData: Partial<InsertArticle> = { ...rest };
