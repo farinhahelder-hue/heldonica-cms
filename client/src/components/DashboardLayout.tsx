@@ -4,7 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useToast } from "@/hooks/use-toast";
 import {
   LayoutDashboard, FileText, Image, Settings, LogOut,
-  Map, Plane, Globe, Menu, X,
+  Map, Plane, Globe, Menu, X, Route,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -13,6 +13,7 @@ const navItems = [
   { href: "/pages", icon: FileText, label: "Pages" },
   { href: "/articles", icon: Globe, label: "Articles" },
   { href: "/destinations", icon: Map, label: "Destinations" },
+  { href: "/maps", icon: Route, label: "Cartes & Parcours" },
   { href: "/travel-planning", icon: Plane, label: "Travel Planning" },
   { href: "/media", icon: Image, label: "Médiathèque" },
 ];

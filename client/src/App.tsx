@@ -7,6 +7,7 @@ import PageEditor from "./pages/PageEditor";
 import ArticlesManager from "./pages/ArticlesManager";
 import ArticleEditor from "./pages/ArticleEditor";
 import Destinations from "./pages/Destinations";
+import MapsManager from "./pages/MapsManager";
 import MediaManager from "./pages/MediaManager";
 import TravelPlanningRequests from "./pages/TravelPlanningRequests";
 
@@ -29,6 +30,7 @@ export default function App() {
       <Route path="/articles/new" component={() => <ProtectedRoute component={ArticleEditor} />} />
       <Route path="/articles/edit/:id" component={() => <ProtectedRoute component={ArticleEditor} />} />
       <Route path="/destinations" component={() => <ProtectedRoute component={Destinations} />} />
+      <Route path="/maps" component={() => <ProtectedRoute component={MapsManager} />} />
       <Route path="/media" component={() => <ProtectedRoute component={MediaManager} />} />
       <Route path="/travel-planning" component={() => <ProtectedRoute component={TravelPlanningRequests} />} />
       <Route component={() => <ProtectedRoute component={Dashboard} />} />
